@@ -16,28 +16,23 @@
 package com.lmax.disruptor;
 
 /** Provides static methods for accessing a default {@link ExceptionHandler} object. */
-public final class ExceptionHandlers
-{
+public final class ExceptionHandlers {
 
-    /**
-     * Get a reference to the default {@link ExceptionHandler} instance.
-     *
-     * @return a reference to the default {@link ExceptionHandler} instance
-     */
-    public static ExceptionHandler<Object> defaultHandler()
-    {
-        return DefaultExceptionHandlerHolder.HANDLER;
-    }
+  private ExceptionHandlers() {}
 
-    private ExceptionHandlers()
-    {
-    }
+  /**
+   * Get a reference to the default {@link ExceptionHandler} instance.
+   *
+   * @return a reference to the default {@link ExceptionHandler} instance
+   */
+  public static ExceptionHandler<Object> defaultHandler() {
+    return DefaultExceptionHandlerHolder.HANDLER;
+  }
 
-    // lazily initialize the default exception handler.
-    // This nested object isn't strictly necessary unless additional utility functionality is
-    // added to ExceptionHandlers, but it exists to ensure the code remains obvious.
-    private static final class DefaultExceptionHandlerHolder
-    {
-        private static final ExceptionHandler<Object> HANDLER = new FatalExceptionHandler();
-    }
+  // lazily initialize the default exception handler.
+  // This nested object isn't strictly necessary unless additional utility functionality is
+  // added to ExceptionHandlers, but it exists to ensure the code remains obvious.
+  private static final class DefaultExceptionHandlerHolder {
+    private static final ExceptionHandler<Object> HANDLER = new FatalExceptionHandler();
+  }
 }

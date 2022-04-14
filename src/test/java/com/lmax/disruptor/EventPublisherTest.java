@@ -15,52 +15,45 @@
  */
 package com.lmax.disruptor;
 
+import com.lmax.disruptor.support.LongEvent;
+import org.junit.Test;
+
 import static com.lmax.disruptor.RingBuffer.createMultiProducer;
 import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertThat;
 
-import org.junit.Test;
+public class EventPublisherTest implements EventTranslator<LongEvent> {
+  private static final int BUFFER_SIZE = 32;
+  private final RingBuffer<LongEvent> ringBuffer = createMultiProducer(LongEvent.FACTORY, BUFFER_SIZE);
 
-import com.lmax.disruptor.support.LongEvent;
+  @Test
+  public void shouldPublishEvent() {
+    ringBuffer.addGatingSequences(new NoOpEventProcessor(ringBuffer).getSequence());
 
-public class EventPublisherTest implements EventTranslator<LongEvent>
-{
-    private static final int BUFFER_SIZE = 32;
-    private RingBuffer<LongEvent> ringBuffer = createMultiProducer(LongEvent.FACTORY, BUFFER_SIZE);
+    ringBuffer.publishEvent(this);
+    ringBuffer.publishEvent(this);
 
-    @Test
-    public void shouldPublishEvent()
-    {
-        ringBuffer.addGatingSequences(new NoOpEventProcessor(ringBuffer).getSequence());
+    assertThat(Long.valueOf(ringBuffer.get(0).get()), is(Long.valueOf(0 + 29L)));
+    assertThat(Long.valueOf(ringBuffer.get(1).get()), is(Long.valueOf(1 + 29L)));
+  }
 
-        ringBuffer.publishEvent(this);
-        ringBuffer.publishEvent(this);
+  @Test
+  public void shouldTryPublishEvent() throws Exception {
+    ringBuffer.addGatingSequences(new Sequence());
 
-        assertThat(Long.valueOf(ringBuffer.get(0).get()), is(Long.valueOf(0 + 29L)));
-        assertThat(Long.valueOf(ringBuffer.get(1).get()), is(Long.valueOf(1 + 29L)));
+    for (int i = 0; i < BUFFER_SIZE; i++) {
+      assertThat(ringBuffer.tryPublishEvent(this), is(true));
     }
 
-    @Test
-    public void shouldTryPublishEvent() throws Exception
-    {
-        ringBuffer.addGatingSequences(new Sequence());
-
-        for (int i = 0; i < BUFFER_SIZE; i++)
-        {
-            assertThat(ringBuffer.tryPublishEvent(this), is(true));
-        }
-
-        for (int i = 0; i < BUFFER_SIZE; i++)
-        {
-            assertThat(Long.valueOf(ringBuffer.get(i).get()), is(Long.valueOf(i + 29L)));
-        }
-
-        assertThat(ringBuffer.tryPublishEvent(this), is(false));
+    for (int i = 0; i < BUFFER_SIZE; i++) {
+      assertThat(Long.valueOf(ringBuffer.get(i).get()), is(Long.valueOf(i + 29L)));
     }
 
-    @Override
-    public void translateTo(LongEvent event, long sequence)
-    {
-        event.set(sequence + 29);
-    }
+    assertThat(ringBuffer.tryPublishEvent(this), is(false));
+  }
+
+  @Override
+  public void translateTo(LongEvent event, long sequence) {
+    event.set(sequence + 29);
+  }
 }

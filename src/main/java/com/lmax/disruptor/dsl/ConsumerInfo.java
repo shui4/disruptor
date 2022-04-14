@@ -5,19 +5,18 @@ import com.lmax.disruptor.SequenceBarrier;
 
 import java.util.concurrent.Executor;
 
-interface ConsumerInfo
-{
-    Sequence[] getSequences();
+interface ConsumerInfo {
+  SequenceBarrier getBarrier();
 
-    SequenceBarrier getBarrier();
+  Sequence[] getSequences();
 
-    boolean isEndOfChain();
+  void halt();
 
-    void start(Executor executor);
+  boolean isEndOfChain();
 
-    void halt();
+  boolean isRunning();
 
-    void markAsUsedInBarrier();
+  void markAsUsedInBarrier();
 
-    boolean isRunning();
+  void start(Executor executor);
 }

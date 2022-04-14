@@ -15,42 +15,37 @@
  */
 package com.lmax.disruptor.support;
 
-import java.util.concurrent.CyclicBarrier;
-
 import com.lmax.disruptor.RingBuffer;
 
-public final class ValuePublisher implements Runnable
-{
-    private final CyclicBarrier cyclicBarrier;
-    private final RingBuffer<ValueEvent> ringBuffer;
-    private final long iterations;
+import java.util.concurrent.CyclicBarrier;
 
-    public ValuePublisher(
-        final CyclicBarrier cyclicBarrier, final RingBuffer<ValueEvent> ringBuffer, final long iterations)
-    {
-        this.cyclicBarrier = cyclicBarrier;
-        this.ringBuffer = ringBuffer;
-        this.iterations = iterations;
+public final class ValuePublisher implements Runnable {
+  private final CyclicBarrier cyclicBarrier;
+  private final long iterations;
+  private final RingBuffer<ValueEvent> ringBuffer;
+
+  public ValuePublisher(
+      final CyclicBarrier cyclicBarrier,
+      final RingBuffer<ValueEvent> ringBuffer,
+      final long iterations) {
+    this.cyclicBarrier = cyclicBarrier;
+    this.ringBuffer = ringBuffer;
+    this.iterations = iterations;
+  }
+
+  @Override
+  public void run() {
+    try {
+      cyclicBarrier.await();
+
+      for (long i = 0; i < iterations; i++) {
+        long sequence = ringBuffer.next();
+        ValueEvent event = ringBuffer.get(sequence);
+        event.setValue(i);
+        ringBuffer.publish(sequence);
+      }
+    } catch (Exception ex) {
+      throw new RuntimeException(ex);
     }
-
-    @Override
-    public void run()
-    {
-        try
-        {
-            cyclicBarrier.await();
-
-            for (long i = 0; i < iterations; i++)
-            {
-                long sequence = ringBuffer.next();
-                ValueEvent event = ringBuffer.get(sequence);
-                event.setValue(i);
-                ringBuffer.publish(sequence);
-            }
-        }
-        catch (Exception ex)
-        {
-            throw new RuntimeException(ex);
-        }
-    }
+  }
 }

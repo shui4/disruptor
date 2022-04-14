@@ -23,71 +23,56 @@ import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class DelayedEventHandler implements EventHandler<TestEvent>, LifecycleAware
-{
-    private final AtomicBoolean readyToProcessEvent = new AtomicBoolean(false);
-    private volatile boolean stopped = false;
-    private final CyclicBarrier barrier;
+public class DelayedEventHandler implements EventHandler<TestEvent>, LifecycleAware {
+  private final CyclicBarrier barrier;
+  private final AtomicBoolean readyToProcessEvent = new AtomicBoolean(false);
+  private volatile boolean stopped = false;
 
-    public DelayedEventHandler(CyclicBarrier barrier)
-    {
-        this.barrier = barrier;
-    }
+  public DelayedEventHandler() {
+    this(new CyclicBarrier(2));
+  }
 
-    public DelayedEventHandler()
-    {
-        this(new CyclicBarrier(2));
-    }
+  public DelayedEventHandler(CyclicBarrier barrier) {
+    this.barrier = barrier;
+  }
 
-    @Override
-    public void onEvent(final TestEvent entry, final long sequence, final boolean endOfBatch) throws Exception
-    {
-        waitForAndSetFlag(false);
-    }
+  public void awaitStart() throws InterruptedException, BrokenBarrierException {
+    barrier.await();
+  }
 
-    public void processEvent()
-    {
-        waitForAndSetFlag(true);
-    }
+  @Override
+  public void onEvent(final TestEvent entry, final long sequence, final boolean endOfBatch)
+      throws Exception {
+    waitForAndSetFlag(false);
+  }
 
-    public void stopWaiting()
-    {
-        stopped = true;
+  private void waitForAndSetFlag(final boolean newValue) {
+    while (!stopped
+        && !Thread.currentThread().isInterrupted()
+        && !readyToProcessEvent.compareAndSet(!newValue, newValue)) {
+      Thread.yield();
     }
+  }
 
-    private void waitForAndSetFlag(final boolean newValue)
-    {
-        while (!stopped && !Thread.currentThread().isInterrupted() &&
-            !readyToProcessEvent.compareAndSet(!newValue, newValue))
-        {
-            Thread.yield();
-        }
-    }
+  @Override
+  public void onShutdown() {}
 
-    @Override
-    public void onStart()
-    {
-        try
-        {
-            barrier.await();
-        }
-        catch (InterruptedException e)
-        {
-            throw new RuntimeException(e);
-        }
-        catch (BrokenBarrierException e)
-        {
-            throw new RuntimeException(e);
-        }
+  @Override
+  public void onStart() {
+    try {
+      barrier.await();
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    } catch (BrokenBarrierException e) {
+      throw new RuntimeException(e);
     }
+  }
 
-    @Override
-    public void onShutdown()
-    {
-    }
+  public void processEvent() {
+    waitForAndSetFlag(true);
+  }
 
-    public void awaitStart() throws InterruptedException, BrokenBarrierException
-    {
-        barrier.await();
-    }
+  public void stopWaiting() {
+    stopped = true;
+  }
 }

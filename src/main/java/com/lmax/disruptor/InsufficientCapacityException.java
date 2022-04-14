@@ -16,25 +16,22 @@
 package com.lmax.disruptor;
 
 /**
- * <p>Exception thrown when it is not possible to insert a value into
- * the ring buffer without it wrapping the consuming sequences.  Used
- * specifically when claiming with the {@link RingBuffer#tryNext()} call.</p>
+ * Exception thrown when it is not possible to insert a value into the ring buffer without it
+ * wrapping the consuming sequences. Used specifically when claiming with the {@link
+ * RingBuffer#tryNext()} call.
  *
- * <p>For efficiency this exception will not have a stack trace.</p>
+ * <p>For efficiency this exception will not have a stack trace.
  */
 @SuppressWarnings("serial")
-public final class InsufficientCapacityException extends Exception
-{
-    public static final InsufficientCapacityException INSTANCE = new InsufficientCapacityException();
+public final class InsufficientCapacityException extends Exception {
+  public static final InsufficientCapacityException INSTANCE = new InsufficientCapacityException();
 
-    private InsufficientCapacityException()
-    {
-        // Singleton
-    }
+  private InsufficientCapacityException() {
+    // Singleton
+  }
 
-    @Override
-    public synchronized Throwable fillInStackTrace()
-    {
-        return this;
-    }
+  @Override
+  public synchronized Throwable fillInStackTrace() {
+    return this;
+  }
 }

@@ -15,13 +15,6 @@
  */
 package com.lmax.disruptor.sequenced;
 
-import static com.lmax.disruptor.RingBuffer.createSingleProducer;
-import static com.lmax.disruptor.support.PerfTestUtil.failIfNot;
-
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
 import com.lmax.disruptor.AbstractPerfTestDisruptor;
 import com.lmax.disruptor.EventPoller;
 import com.lmax.disruptor.EventPoller.PollState;
@@ -32,7 +25,16 @@ import com.lmax.disruptor.support.ValueEvent;
 import com.lmax.disruptor.util.DaemonThreadFactory;
 import com.lmax.disruptor.util.PaddedLong;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+import static com.lmax.disruptor.RingBuffer.createSingleProducer;
+import static com.lmax.disruptor.support.PerfTestUtil.failIfNot;
+
 /**
+ *
+ *
  * <pre>
  * UniCast a series of items between 1 publisher and 1 event processor.
  *
@@ -61,136 +63,117 @@ import com.lmax.disruptor.util.PaddedLong;
  *
  * </pre>
  */
-public final class OneToOneSequencedPollerThroughputTest extends AbstractPerfTestDisruptor
-{
-    private static final int BUFFER_SIZE = 1024 * 64;
-    private static final long ITERATIONS = 1000L * 1000L * 100L;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor(DaemonThreadFactory.INSTANCE);
-    private final long expectedResult = PerfTestUtil.accumulatedAddition(ITERATIONS);
+public final class OneToOneSequencedPollerThroughputTest extends AbstractPerfTestDisruptor {
+  private static final int BUFFER_SIZE = 1024 * 64;
+  private static final long ITERATIONS = 1000L * 1000L * 100L;
+  private final ExecutorService executor =
+      Executors.newSingleThreadExecutor(DaemonThreadFactory.INSTANCE);
+  private final long expectedResult = PerfTestUtil.accumulatedAddition(ITERATIONS);
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////////////////////////
 
-    private final RingBuffer<ValueEvent> ringBuffer =
-        createSingleProducer(ValueEvent.EVENT_FACTORY, BUFFER_SIZE, new YieldingWaitStrategy());
+  private final RingBuffer<ValueEvent> ringBuffer =
+      createSingleProducer(ValueEvent.EVENT_FACTORY, BUFFER_SIZE, new YieldingWaitStrategy());
 
-    private final EventPoller<ValueEvent> poller = ringBuffer.newPoller();
-    private final PollRunnable pollRunnable = new PollRunnable(poller);
+  private final EventPoller<ValueEvent> poller = ringBuffer.newPoller();
+  private final PollRunnable pollRunnable = new PollRunnable(poller);
 
-    {
-        ringBuffer.addGatingSequences(poller.getSequence());
+  {
+    ringBuffer.addGatingSequences(poller.getSequence());
+  }
+
+  ///////////////////////////////////////////////////////////////////////////////////////////////
+
+  public static void main(String[] args) throws Exception {
+    OneToOneSequencedPollerThroughputTest test = new OneToOneSequencedPollerThroughputTest();
+    test.testImplementations();
+  }
+
+  @Override
+  protected int getRequiredProcessorCount() {
+    return 2;
+  }
+
+  @Override
+  protected long runDisruptorPass() throws InterruptedException {
+    final CountDownLatch latch = new CountDownLatch(1);
+    long expectedCount = poller.getSequence().get() + ITERATIONS;
+    pollRunnable.reset(latch, expectedCount);
+    executor.submit(pollRunnable);
+    long start = System.currentTimeMillis();
+
+    final RingBuffer<ValueEvent> rb = ringBuffer;
+
+    for (long i = 0; i < ITERATIONS; i++) {
+      long next = rb.next();
+      rb.get(next).setValue(i);
+      rb.publish(next);
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
+    latch.await();
+    long opsPerSecond = (ITERATIONS * 1000L) / (System.currentTimeMillis() - start);
+    waitForEventProcessorSequence(expectedCount);
+    pollRunnable.halt();
 
-    @Override
-    protected int getRequiredProcessorCount()
-    {
-        return 2;
+    failIfNot(expectedResult, pollRunnable.getValue());
+
+    return opsPerSecond;
+  }
+
+  private void waitForEventProcessorSequence(long expectedCount) throws InterruptedException {
+    while (poller.getSequence().get() != expectedCount) {
+      Thread.sleep(1);
+    }
+  }
+
+  private static class PollRunnable implements Runnable, EventPoller.Handler<ValueEvent> {
+    private final EventPoller<ValueEvent> poller;
+    private final PaddedLong value = new PaddedLong();
+    private long count;
+    private CountDownLatch latch;
+    private volatile boolean running = true;
+
+    PollRunnable(EventPoller<ValueEvent> poller) {
+      this.poller = poller;
     }
 
-    private static class PollRunnable implements Runnable, EventPoller.Handler<ValueEvent>
-    {
-        private final EventPoller<ValueEvent> poller;
-        private volatile boolean running = true;
-        private final PaddedLong value = new PaddedLong();
-        private CountDownLatch latch;
-        private long count;
+    public long getValue() {
+      return value.get();
+    }
 
-        PollRunnable(EventPoller<ValueEvent> poller)
-        {
-            this.poller = poller;
-        }
-
-        @Override
-        public void run()
-        {
-            try
-            {
-                while (running)
-                {
-                    if (PollState.PROCESSING != poller.poll(this))
-                    {
-                        Thread.yield();
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                e.printStackTrace();
-            }
-        }
-
-        @Override
-        public boolean onEvent(ValueEvent event, long sequence, boolean endOfBatch)
-        {
-            value.set(value.get() + event.getValue());
-
-            if (count == sequence)
-            {
-                latch.countDown();
-            }
-
-            return true;
-        }
-
-        public void halt()
-        {
-            running = false;
-        }
-
-        public void reset(final CountDownLatch latch, final long expectedCount)
-        {
-            value.set(0L);
-            this.latch = latch;
-            count = expectedCount;
-            running = true;
-        }
-
-        public long getValue()
-        {
-            return value.get();
-        }
+    public void halt() {
+      running = false;
     }
 
     @Override
-    protected long runDisruptorPass() throws InterruptedException
-    {
-        final CountDownLatch latch = new CountDownLatch(1);
-        long expectedCount = poller.getSequence().get() + ITERATIONS;
-        pollRunnable.reset(latch, expectedCount);
-        executor.submit(pollRunnable);
-        long start = System.currentTimeMillis();
+    public boolean onEvent(ValueEvent event, long sequence, boolean endOfBatch) {
+      value.set(value.get() + event.getValue());
 
-        final RingBuffer<ValueEvent> rb = ringBuffer;
+      if (count == sequence) {
+        latch.countDown();
+      }
 
-        for (long i = 0; i < ITERATIONS; i++)
-        {
-            long next = rb.next();
-            rb.get(next).setValue(i);
-            rb.publish(next);
+      return true;
+    }
+
+    public void reset(final CountDownLatch latch, final long expectedCount) {
+      value.set(0L);
+      this.latch = latch;
+      count = expectedCount;
+      running = true;
+    }
+
+    @Override
+    public void run() {
+      try {
+        while (running) {
+          if (PollState.PROCESSING != poller.poll(this)) {
+            Thread.yield();
+          }
         }
-
-        latch.await();
-        long opsPerSecond = (ITERATIONS * 1000L) / (System.currentTimeMillis() - start);
-        waitForEventProcessorSequence(expectedCount);
-        pollRunnable.halt();
-
-        failIfNot(expectedResult, pollRunnable.getValue());
-
-        return opsPerSecond;
+      } catch (Exception e) {
+        e.printStackTrace();
+      }
     }
-
-    private void waitForEventProcessorSequence(long expectedCount) throws InterruptedException
-    {
-        while (poller.getSequence().get() != expectedCount)
-        {
-            Thread.sleep(1);
-        }
-    }
-
-    public static void main(String[] args) throws Exception
-    {
-        OneToOneSequencedPollerThroughputTest test = new OneToOneSequencedPollerThroughputTest();
-        test.testImplementations();
-    }
+  }
 }

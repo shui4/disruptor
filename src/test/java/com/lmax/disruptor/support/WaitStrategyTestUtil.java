@@ -27,19 +27,18 @@ import java.util.concurrent.Executors;
 import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertThat;
 
-public class WaitStrategyTestUtil
-{
-    private static final ExecutorService EXECUTOR = Executors.newCachedThreadPool();
+public class WaitStrategyTestUtil {
+  private static final ExecutorService EXECUTOR = Executors.newCachedThreadPool();
 
-    public static void assertWaitForWithDelayOf(long sleepTimeMillis, WaitStrategy waitStrategy)
-        throws InterruptedException, BrokenBarrierException, AlertException, TimeoutException
-    {
-        SequenceUpdater sequenceUpdater = new SequenceUpdater(sleepTimeMillis, waitStrategy);
-        EXECUTOR.execute(sequenceUpdater);
-        sequenceUpdater.waitForStartup();
-        Sequence cursor = new Sequence(0);
-        long sequence = waitStrategy.waitFor(0, cursor, sequenceUpdater.sequence, new DummySequenceBarrier());
+  public static void assertWaitForWithDelayOf(long sleepTimeMillis, WaitStrategy waitStrategy)
+      throws InterruptedException, BrokenBarrierException, AlertException, TimeoutException {
+    SequenceUpdater sequenceUpdater = new SequenceUpdater(sleepTimeMillis, waitStrategy);
+    EXECUTOR.execute(sequenceUpdater);
+    sequenceUpdater.waitForStartup();
+    Sequence cursor = new Sequence(0);
+    long sequence =
+        waitStrategy.waitFor(0, cursor, sequenceUpdater.sequence, new DummySequenceBarrier());
 
-        assertThat(sequence, is(0L));
-    }
+    assertThat(sequence, is(0L));
+  }
 }

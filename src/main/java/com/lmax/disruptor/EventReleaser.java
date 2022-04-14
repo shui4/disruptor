@@ -15,7 +15,6 @@
  */
 package com.lmax.disruptor;
 
-public interface EventReleaser
-{
-    void release();
+public interface EventReleaser {
+  void release();
 }

@@ -15,72 +15,60 @@
  */
 package com.lmax.disruptor;
 
+import com.lmax.disruptor.util.ThreadHints;
+
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
-import com.lmax.disruptor.util.ThreadHints;
-
 /**
- * Blocking strategy that uses a lock and condition variable for {@link EventProcessor}s waiting on a barrier.
- * <p>
- * This strategy can be used when throughput and low-latency are not as important as CPU resource.
+ * Blocking strategy that uses a lock and condition variable for {@link EventProcessor}s waiting on
+ * a barrier.
+ *
+ * <p>This strategy can be used when throughput and low-latency are not as important as CPU
+ * resource.
  */
-public final class BlockingWaitStrategy implements WaitStrategy
-{
-    private final Lock lock = new ReentrantLock();
-    private final Condition processorNotifyCondition = lock.newCondition();
+public final class BlockingWaitStrategy implements WaitStrategy {
+  private final Lock lock = new ReentrantLock();
+  private final Condition processorNotifyCondition = lock.newCondition();
 
-    @Override
-    public long waitFor(long sequence, Sequence cursorSequence, Sequence dependentSequence, SequenceBarrier barrier)
-        throws AlertException, InterruptedException
-    {
-        long availableSequence;
-        if (cursorSequence.get() < sequence)
-        {
-            lock.lock();
-            try
-            {
-                while (cursorSequence.get() < sequence)
-                {
-                    barrier.checkAlert();
-                    processorNotifyCondition.await();
-                }
-            }
-            finally
-            {
-                lock.unlock();
-            }
+  @Override
+  public void signalAllWhenBlocking() {
+    lock.lock();
+    try {
+      processorNotifyCondition.signalAll();
+    } finally {
+      lock.unlock();
+    }
+  }
+
+  @Override
+  public long waitFor(
+      long sequence, Sequence cursorSequence, Sequence dependentSequence, SequenceBarrier barrier)
+      throws AlertException, InterruptedException {
+    long availableSequence;
+    if (cursorSequence.get() < sequence) {
+      lock.lock();
+      try {
+        while (cursorSequence.get() < sequence) {
+          barrier.checkAlert();
+          processorNotifyCondition.await();
         }
-
-        while ((availableSequence = dependentSequence.get()) < sequence)
-        {
-            barrier.checkAlert();
-            ThreadHints.onSpinWait();
-        }
-
-        return availableSequence;
+      } finally {
+        lock.unlock();
+      }
     }
 
-    @Override
-    public void signalAllWhenBlocking()
-    {
-        lock.lock();
-        try
-        {
-            processorNotifyCondition.signalAll();
-        }
-        finally
-        {
-            lock.unlock();
-        }
+    while ((availableSequence = dependentSequence.get()) < sequence) {
+      barrier.checkAlert();
+      ThreadHints.onSpinWait();
     }
 
-    @Override
-    public String toString()
-    {
-        return "BlockingWaitStrategy{" +
-            "processorNotifyCondition=" + processorNotifyCondition +
-            '}';
-    }
+    return availableSequence;
+  }
+
+  @Override
+  public String toString() {
+    return "BlockingWaitStrategy{" + "processorNotifyCondition=" + processorNotifyCondition + '}';
+  }
 }

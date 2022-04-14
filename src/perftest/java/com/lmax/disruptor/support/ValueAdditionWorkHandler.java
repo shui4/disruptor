@@ -17,19 +17,16 @@ package com.lmax.disruptor.support;
 
 import com.lmax.disruptor.WorkHandler;
 
-public class ValueAdditionWorkHandler implements WorkHandler<ValueEvent>
-{
-    private long total;
+public class ValueAdditionWorkHandler implements WorkHandler<ValueEvent> {
+  private long total;
 
-    @Override
-    public void onEvent(ValueEvent event) throws Exception
-    {
-        long value = event.getValue();
-        total += value;
-    }
+  public long getTotal() {
+    return total;
+  }
 
-    public long getTotal()
-    {
-        return total;
-    }
+  @Override
+  public void onEvent(ValueEvent event) throws Exception {
+    long value = event.getValue();
+    total += value;
+  }
 }

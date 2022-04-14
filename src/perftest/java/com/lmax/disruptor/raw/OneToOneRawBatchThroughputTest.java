@@ -15,20 +15,16 @@
  */
 package com.lmax.disruptor.raw;
 
+import com.lmax.disruptor.*;
+import com.lmax.disruptor.util.DaemonThreadFactory;
+
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import com.lmax.disruptor.AbstractPerfTestDisruptor;
-import com.lmax.disruptor.Sequence;
-import com.lmax.disruptor.SequenceBarrier;
-import com.lmax.disruptor.Sequenced;
-import com.lmax.disruptor.Sequencer;
-import com.lmax.disruptor.SingleProducerSequencer;
-import com.lmax.disruptor.YieldingWaitStrategy;
-import com.lmax.disruptor.util.DaemonThreadFactory;
-
 /**
+ *
+ *
  * <pre>
  * UniCast a series of items between 1 publisher and 1 event processor.
  *
@@ -71,109 +67,95 @@ import com.lmax.disruptor.util.DaemonThreadFactory;
  *
  * </pre>
  */
-public final class OneToOneRawBatchThroughputTest extends AbstractPerfTestDisruptor
-{
-    private static final int BUFFER_SIZE = 1024 * 64;
-    private static final long ITERATIONS = 1000L * 1000L * 200L;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor(DaemonThreadFactory.INSTANCE);
+public final class OneToOneRawBatchThroughputTest extends AbstractPerfTestDisruptor {
+  private static final int BUFFER_SIZE = 1024 * 64;
+  private static final long ITERATIONS = 1000L * 1000L * 200L;
+  private final ExecutorService executor =
+      Executors.newSingleThreadExecutor(DaemonThreadFactory.INSTANCE);
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////////////////////////
 
-    private final Sequencer sequencer = new SingleProducerSequencer(BUFFER_SIZE, new YieldingWaitStrategy());
-    private final MyRunnable myRunnable = new MyRunnable(sequencer);
+  private final Sequencer sequencer =
+      new SingleProducerSequencer(BUFFER_SIZE, new YieldingWaitStrategy());
+  private final MyRunnable myRunnable = new MyRunnable(sequencer);
 
-    {
-        sequencer.addGatingSequences(myRunnable.sequence);
+  {
+    sequencer.addGatingSequences(myRunnable.sequence);
+  }
+
+  ///////////////////////////////////////////////////////////////////////////////////////////////
+
+  public static void main(String[] args) throws Exception {
+    OneToOneRawBatchThroughputTest test = new OneToOneRawBatchThroughputTest();
+    test.testImplementations();
+  }
+
+  @Override
+  protected int getRequiredProcessorCount() {
+    return 2;
+  }
+
+  @Override
+  protected long runDisruptorPass() throws InterruptedException {
+    int batchSize = 10;
+    final CountDownLatch latch = new CountDownLatch(1);
+    long expectedCount = myRunnable.sequence.get() + (ITERATIONS * batchSize);
+    myRunnable.reset(latch, expectedCount);
+    executor.submit(myRunnable);
+    long start = System.currentTimeMillis();
+
+    final Sequenced sequencer = this.sequencer;
+
+    for (long i = 0; i < ITERATIONS; i++) {
+      long next = sequencer.next(batchSize);
+      sequencer.publish((next - (batchSize - 1)), next);
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
+    latch.await();
+    long end = System.currentTimeMillis();
+    long opsPerSecond = (ITERATIONS * 1000L * batchSize) / (end - start);
+    waitForEventProcessorSequence(expectedCount);
+
+    return opsPerSecond;
+  }
+
+  private void waitForEventProcessorSequence(long expectedCount) throws InterruptedException {
+    while (myRunnable.sequence.get() != expectedCount) {
+      Thread.sleep(1);
+    }
+  }
+
+  private static class MyRunnable implements Runnable {
+    private final SequenceBarrier barrier;
+    Sequence sequence = new Sequence(-1);
+    private long expectedCount;
+    private CountDownLatch latch;
+
+    MyRunnable(Sequencer sequencer) {
+      this.barrier = sequencer.newBarrier();
+    }
+
+    public void reset(CountDownLatch latch, long expectedCount) {
+      this.latch = latch;
+      this.expectedCount = expectedCount;
+    }
 
     @Override
-    protected int getRequiredProcessorCount()
-    {
-        return 2;
+    public void run() {
+      long expected = expectedCount;
+      long processed = -1;
+
+      try {
+        do {
+          processed = barrier.waitFor(sequence.get() + 1);
+          sequence.set(processed);
+        } while (processed < expected);
+
+        latch.countDown();
+        sequence.set(processed);
+      } catch (Exception e) {
+        e.printStackTrace();
+      }
     }
-
-    @Override
-    protected long runDisruptorPass() throws InterruptedException
-    {
-        int batchSize = 10;
-        final CountDownLatch latch = new CountDownLatch(1);
-        long expectedCount = myRunnable.sequence.get() + (ITERATIONS * batchSize);
-        myRunnable.reset(latch, expectedCount);
-        executor.submit(myRunnable);
-        long start = System.currentTimeMillis();
-
-        final Sequenced sequencer = this.sequencer;
-
-        for (long i = 0; i < ITERATIONS; i++)
-        {
-            long next = sequencer.next(batchSize);
-            sequencer.publish((next - (batchSize - 1)), next);
-        }
-
-        latch.await();
-        long end = System.currentTimeMillis();
-        long opsPerSecond = (ITERATIONS * 1000L * batchSize) / (end - start);
-        waitForEventProcessorSequence(expectedCount);
-
-        return opsPerSecond;
-    }
-
-    private void waitForEventProcessorSequence(long expectedCount) throws InterruptedException
-    {
-        while (myRunnable.sequence.get() != expectedCount)
-        {
-            Thread.sleep(1);
-        }
-    }
-
-    private static class MyRunnable implements Runnable
-    {
-        private CountDownLatch latch;
-        private long expectedCount;
-        Sequence sequence = new Sequence(-1);
-        private final SequenceBarrier barrier;
-
-        MyRunnable(Sequencer sequencer)
-        {
-            this.barrier = sequencer.newBarrier();
-        }
-
-        public void reset(CountDownLatch latch, long expectedCount)
-        {
-            this.latch = latch;
-            this.expectedCount = expectedCount;
-        }
-
-        @Override
-        public void run()
-        {
-            long expected = expectedCount;
-            long processed = -1;
-
-            try
-            {
-                do
-                {
-                    processed = barrier.waitFor(sequence.get() + 1);
-                    sequence.set(processed);
-                }
-                while (processed < expected);
-
-                latch.countDown();
-                sequence.set(processed);
-            }
-            catch (Exception e)
-            {
-                e.printStackTrace();
-            }
-        }
-    }
-
-    public static void main(String[] args) throws Exception
-    {
-        OneToOneRawBatchThroughputTest test = new OneToOneRawBatchThroughputTest();
-        test.testImplementations();
-    }
+  }
 }

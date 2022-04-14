@@ -32,6 +32,8 @@ import java.util.concurrent.CountDownLatch;
 import static com.lmax.disruptor.support.PerfTestUtil.failIfNot;
 
 /**
+ *
+ *
  * <pre>
  * UniCast a series of items between 1 publisher and 1 event processor using the EventTranslator API
  *
@@ -60,88 +62,79 @@ import static com.lmax.disruptor.support.PerfTestUtil.failIfNot;
  *
  * </pre>
  */
-public final class OneToOneTranslatorThroughputTest extends AbstractPerfTestDisruptor
-{
-    private static final int BUFFER_SIZE = 1024 * 64;
-    private static final long ITERATIONS = 1000L * 1000L * 100L;
-    private final long expectedResult = PerfTestUtil.accumulatedAddition(ITERATIONS);
-    private final ValueAdditionEventHandler handler = new ValueAdditionEventHandler();
-    private final RingBuffer<ValueEvent> ringBuffer;
-    private final MutableLong value = new MutableLong(0);
+public final class OneToOneTranslatorThroughputTest extends AbstractPerfTestDisruptor {
+  private static final int BUFFER_SIZE = 1024 * 64;
+  private static final long ITERATIONS = 1000L * 1000L * 100L;
+  private final long expectedResult = PerfTestUtil.accumulatedAddition(ITERATIONS);
+  private final ValueAdditionEventHandler handler = new ValueAdditionEventHandler();
+  private final RingBuffer<ValueEvent> ringBuffer;
+  private final MutableLong value = new MutableLong(0);
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////////////////////////
 
-    @SuppressWarnings("unchecked")
-    public OneToOneTranslatorThroughputTest()
-    {
-        Disruptor<ValueEvent> disruptor =
-            new Disruptor<ValueEvent>(
-                ValueEvent.EVENT_FACTORY,
-                BUFFER_SIZE, DaemonThreadFactory.INSTANCE,
-                ProducerType.SINGLE,
-                new YieldingWaitStrategy());
-        disruptor.handleEventsWith(handler);
-        this.ringBuffer = disruptor.start();
+  @SuppressWarnings("unchecked")
+  public OneToOneTranslatorThroughputTest() {
+    Disruptor<ValueEvent> disruptor =
+        new Disruptor<ValueEvent>(
+            ValueEvent.EVENT_FACTORY,
+            BUFFER_SIZE,
+            DaemonThreadFactory.INSTANCE,
+            ProducerType.SINGLE,
+            new YieldingWaitStrategy());
+    disruptor.handleEventsWith(handler);
+    this.ringBuffer = disruptor.start();
+  }
+
+  ///////////////////////////////////////////////////////////////////////////////////////////////
+
+  public static void main(String[] args) throws Exception {
+    OneToOneTranslatorThroughputTest test = new OneToOneTranslatorThroughputTest();
+    test.testImplementations();
+  }
+
+  @Override
+  protected int getRequiredProcessorCount() {
+    return 2;
+  }
+
+  @Override
+  protected long runDisruptorPass() throws InterruptedException {
+    MutableLong value = this.value;
+
+    final CountDownLatch latch = new CountDownLatch(1);
+    long expectedCount = ringBuffer.getMinimumGatingSequence() + ITERATIONS;
+
+    handler.reset(latch, expectedCount);
+    long start = System.currentTimeMillis();
+
+    final RingBuffer<ValueEvent> rb = ringBuffer;
+
+    for (long l = 0; l < ITERATIONS; l++) {
+      value.set(l);
+      rb.publishEvent(Translator.INSTANCE, value);
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////
+    latch.await();
+    long opsPerSecond = (ITERATIONS * 1000L) / (System.currentTimeMillis() - start);
+    waitForEventProcessorSequence(expectedCount);
+
+    failIfNot(expectedResult, handler.getValue());
+
+    return opsPerSecond;
+  }
+
+  private void waitForEventProcessorSequence(long expectedCount) throws InterruptedException {
+    while (ringBuffer.getMinimumGatingSequence() != expectedCount) {
+      Thread.sleep(1);
+    }
+  }
+
+  private static class Translator implements EventTranslatorOneArg<ValueEvent, MutableLong> {
+    private static final Translator INSTANCE = new Translator();
 
     @Override
-    protected int getRequiredProcessorCount()
-    {
-        return 2;
+    public void translateTo(ValueEvent event, long sequence, MutableLong arg0) {
+      event.setValue(arg0.get());
     }
-
-    @Override
-    protected long runDisruptorPass() throws InterruptedException
-    {
-        MutableLong value = this.value;
-
-        final CountDownLatch latch = new CountDownLatch(1);
-        long expectedCount = ringBuffer.getMinimumGatingSequence() + ITERATIONS;
-
-        handler.reset(latch, expectedCount);
-        long start = System.currentTimeMillis();
-
-        final RingBuffer<ValueEvent> rb = ringBuffer;
-
-        for (long l = 0; l < ITERATIONS; l++)
-        {
-            value.set(l);
-            rb.publishEvent(Translator.INSTANCE, value);
-        }
-
-        latch.await();
-        long opsPerSecond = (ITERATIONS * 1000L) / (System.currentTimeMillis() - start);
-        waitForEventProcessorSequence(expectedCount);
-
-        failIfNot(expectedResult, handler.getValue());
-
-        return opsPerSecond;
-    }
-
-    private static class Translator implements EventTranslatorOneArg<ValueEvent, MutableLong>
-    {
-        private static final Translator INSTANCE = new Translator();
-
-        @Override
-        public void translateTo(ValueEvent event, long sequence, MutableLong arg0)
-        {
-            event.setValue(arg0.get());
-        }
-    }
-
-    private void waitForEventProcessorSequence(long expectedCount) throws InterruptedException
-    {
-        while (ringBuffer.getMinimumGatingSequence() != expectedCount)
-        {
-            Thread.sleep(1);
-        }
-    }
-
-    public static void main(String[] args) throws Exception
-    {
-        OneToOneTranslatorThroughputTest test = new OneToOneTranslatorThroughputTest();
-        test.testImplementations();
-    }
+  }
 }

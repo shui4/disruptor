@@ -15,51 +15,43 @@
  */
 package com.lmax.disruptor.support;
 
-import java.util.concurrent.CyclicBarrier;
-
 import com.lmax.disruptor.RingBuffer;
 
-public final class ValueBatchPublisher implements Runnable
-{
-    private final CyclicBarrier cyclicBarrier;
-    private final RingBuffer<ValueEvent> ringBuffer;
-    private final long iterations;
-    private final int batchSize;
+import java.util.concurrent.CyclicBarrier;
 
-    public ValueBatchPublisher(
-        final CyclicBarrier cyclicBarrier,
-        final RingBuffer<ValueEvent> ringBuffer,
-        final long iterations,
-        final int batchSize)
-    {
-        this.cyclicBarrier = cyclicBarrier;
-        this.ringBuffer = ringBuffer;
-        this.iterations = iterations;
-        this.batchSize = batchSize;
-    }
+public final class ValueBatchPublisher implements Runnable {
+  private final int batchSize;
+  private final CyclicBarrier cyclicBarrier;
+  private final long iterations;
+  private final RingBuffer<ValueEvent> ringBuffer;
 
-    @Override
-    public void run()
-    {
-        try
-        {
-            cyclicBarrier.await();
+  public ValueBatchPublisher(
+      final CyclicBarrier cyclicBarrier,
+      final RingBuffer<ValueEvent> ringBuffer,
+      final long iterations,
+      final int batchSize) {
+    this.cyclicBarrier = cyclicBarrier;
+    this.ringBuffer = ringBuffer;
+    this.iterations = iterations;
+    this.batchSize = batchSize;
+  }
 
-            for (long i = 0; i < iterations; i += batchSize)
-            {
-                long hi = ringBuffer.next(batchSize);
-                long lo = hi - (batchSize - 1);
-                for (long l = lo; l <= hi; l++)
-                {
-                    ValueEvent event = ringBuffer.get(l);
-                    event.setValue(l);
-                }
-                ringBuffer.publish(lo, hi);
-            }
+  @Override
+  public void run() {
+    try {
+      cyclicBarrier.await();
+
+      for (long i = 0; i < iterations; i += batchSize) {
+        long hi = ringBuffer.next(batchSize);
+        long lo = hi - (batchSize - 1);
+        for (long l = lo; l <= hi; l++) {
+          ValueEvent event = ringBuffer.get(l);
+          event.setValue(l);
         }
-        catch (Exception ex)
-        {
-            throw new RuntimeException(ex);
-        }
+        ringBuffer.publish(lo, hi);
+      }
+    } catch (Exception ex) {
+      throw new RuntimeException(ex);
     }
+  }
 }

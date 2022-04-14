@@ -23,79 +23,71 @@ import com.lmax.disruptor.SequenceBarrier;
 import java.util.concurrent.Executor;
 
 /**
- * <p>Wrapper class to tie together a particular event processing stage</p>
+ * Wrapper class to tie together a particular event processing stage
+ *
  * <p>
- * <p>Tracks the event processor instance, the event handler instance, and sequence barrier which the stage is attached to.</p>
+ *
+ * <p>Tracks the event processor instance, the event handler instance, and sequence barrier which
+ * the stage is attached to.
  *
  * @param <T> the type of the configured {@link EventHandler}
  */
-class EventProcessorInfo<T> implements ConsumerInfo
-{
-    private final EventProcessor eventprocessor;
-    private final EventHandler<? super T> handler;
-    private final SequenceBarrier barrier;
-    private boolean endOfChain = true;
+class EventProcessorInfo<T> implements ConsumerInfo {
+  private final SequenceBarrier barrier;
+  private final EventProcessor eventprocessor;
+  private final EventHandler<? super T> handler;
+  private boolean endOfChain = true;
 
-    EventProcessorInfo(
-        final EventProcessor eventprocessor, final EventHandler<? super T> handler, final SequenceBarrier barrier)
-    {
-        this.eventprocessor = eventprocessor;
-        this.handler = handler;
-        this.barrier = barrier;
-    }
+  EventProcessorInfo(
+      final EventProcessor eventprocessor,
+      final EventHandler<? super T> handler,
+      final SequenceBarrier barrier) {
+    this.eventprocessor = eventprocessor;
+    this.handler = handler;
+    this.barrier = barrier;
+  }
 
-    public EventProcessor getEventProcessor()
-    {
-        return eventprocessor;
-    }
+  @Override
+  public SequenceBarrier getBarrier() {
+    return barrier;
+  }
 
-    @Override
-    public Sequence[] getSequences()
-    {
-        return new Sequence[]{eventprocessor.getSequence()};
-    }
+  @Override
+  public Sequence[] getSequences() {
+    return new Sequence[] {eventprocessor.getSequence()};
+  }
 
-    public EventHandler<? super T> getHandler()
-    {
-        return handler;
-    }
+  @Override
+  public void halt() {
+    eventprocessor.halt();
+  }
 
-    @Override
-    public SequenceBarrier getBarrier()
-    {
-        return barrier;
-    }
+  @Override
+  public boolean isEndOfChain() {
+    return endOfChain;
+  }
 
-    @Override
-    public boolean isEndOfChain()
-    {
-        return endOfChain;
-    }
+  @Override
+  public boolean isRunning() {
+    return eventprocessor.isRunning();
+  }
 
-    @Override
-    public void start(final Executor executor)
-    {
-        executor.execute(eventprocessor);
-    }
+  /** */
+  @Override
+  public void markAsUsedInBarrier() {
+    endOfChain = false;
+  }
 
-    @Override
-    public void halt()
-    {
-        eventprocessor.halt();
-    }
+  @Override
+  public void start(final Executor executor) {
+    executor.execute(eventprocessor);
+  }
 
-    /**
-     *
-     */
-    @Override
-    public void markAsUsedInBarrier()
-    {
-        endOfChain = false;
-    }
+  public EventProcessor getEventProcessor() {
+    return eventprocessor;
+  }
 
-    @Override
-    public boolean isRunning()
-    {
-        return eventprocessor.isRunning();
-    }
+  public EventHandler<? super T> getHandler() {
+    return handler;
+  }
 }
